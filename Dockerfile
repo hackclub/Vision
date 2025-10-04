@@ -14,9 +14,8 @@ RUN apt-get update && apt-get install -y \
 # Copy requirements first for better caching
 COPY requirements.txt .
 
-# Upgrade pip and install dependencies required by shuttleai before installing requirements
+# Install Python dependencies
 RUN pip install --upgrade pip && \
-    pip install --no-cache-dir python-dateutil aiohttp && \
     pip install --no-cache-dir -r requirements.txt
 
 # Copy application code
