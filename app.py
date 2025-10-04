@@ -1,3 +1,4 @@
+import secrets
 from flask import Flask, render_template, request, jsonify, redirect, url_for, flash
 from flask_login import LoginManager, UserMixin, login_user, logout_user, login_required, current_user
 from flask_sqlalchemy import SQLAlchemy
@@ -257,8 +258,7 @@ def load_user(user_id):
 # Email Verification Functions
 def generate_verification_code():
     """Generate a 6-digit verification code"""
-    import random
-    return str(random.randint(100000, 999999))
+    return f"{secrets.randbelow(10**6):06d}"
 
 def send_verification_code_to_airtable(email, code):
     """Send verification code to Airtable for email automation"""
