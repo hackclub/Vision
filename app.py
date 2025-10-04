@@ -197,7 +197,9 @@ def call_ai(prompt, max_tokens=8000, temperature=0.5):
 class User(UserMixin, db.Model):
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(80), unique=True, nullable=False)
+    email = db.Column(db.String(120), unique=True, nullable=False)
     password = db.Column(db.String(120), nullable=False)
+    verified = db.Column(db.Boolean, default=False, nullable=False)
     bases = db.relationship('AirtableBase', backref='user', lazy=True)
 
 class AirtableBase(db.Model):
@@ -251,6 +253,49 @@ class ReviewJob(db.Model):
 @login_manager.user_loader
 def load_user(user_id):
     return User.query.get(int(user_id))
+
+# Email Verification Functions
+def generate_verification_code():
+    """Generate a 6-digit verification code"""
+    import random
+    return str(random.randint(100000, 999999))
+
+def send_verification_code_to_airtable(email, code):
+    """Send verification code to Airtable for email automation"""
+    try:
+        verification_base = airtable_api.base('appSUAc40CDu6bDAp')
+        verification_table = verification_base.table('Dashboard Email Verification')
+
+        # Create record with email, code, and Pending status
+        verification_table.create({
+            'Email': email,
+            'Code': code,
+            'Status': 'Pending'
+        })
+
+        return True
+    except Exception as e:
+        app.logger.error(f'Failed to send verification code to Airtable: {str(e)}')
+        return False
+
+def verify_code_from_airtable(email, code):
+    """Verify the code from Airtable and update status to Verified"""
+    try:
+        verification_base = airtable_api.base('appSUAc40CDu6bDAp')
+        verification_table = verification_base.table('Dashboard Email Verification')
+
+        # Search for matching email and code with Pending status
+        records = verification_table.all(formula=f"AND({{Email}}='{email}', {{Code}}='{code}', {{Status}}='Pending')")
+
+        if records:
+            # Update status to Verified
+            verification_table.update(records[0]['id'], {'Status': 'Verified'})
+            return True
+
+        return False
+    except Exception as e:
+        app.logger.error(f'Failed to verify code from Airtable: {str(e)}')
+        return False
 
 # AI Helper Functions
 def ai_detect_fields(table_records, log_fn=None):
@@ -1429,6 +1474,10 @@ def login():
         data = request.json
         user = User.query.filter_by(username=data['username']).first()
         if user and user.password == data['password']:
+            # Only check verification if user has an email (new users)
+            # Old users without email field are automatically allowed
+            if user.email and not user.verified:
+                return jsonify({'success': False, 'error': 'Please verify your email first', 'email': user.email}), 403
             login_user(user)
             return jsonify({'success': True})
         return jsonify({'success': False, 'error': 'Invalid credentials'}), 401
@@ -1438,14 +1487,63 @@ def login():
 def register():
     if request.method == 'POST':
         data = request.json
-        if User.query.filter_by(username=data['username']).first():
-            return jsonify({'success': False, 'error': 'Username exists'}), 400
-        user = User(username=data['username'], password=data['password'])
+        email = data.get('email', '').strip().lower()
+        username = data.get('username', '').strip()
+        password = data.get('password', '')
+
+        # Validate email domain
+        if not email.endswith('@hackclub.com'):
+            return jsonify({'success': False, 'error': 'Only @hackclub.com emails are allowed'}), 400
+
+        # Check if username or email already exists
+        if User.query.filter_by(username=username).first():
+            return jsonify({'success': False, 'error': 'Username already exists'}), 400
+
+        if User.query.filter_by(email=email).first():
+            return jsonify({'success': False, 'error': 'Email already registered'}), 400
+
+        # Generate verification code
+        verification_code = generate_verification_code()
+
+        # Send to Airtable (which will trigger email automation)
+        if not send_verification_code_to_airtable(email, verification_code):
+            return jsonify({'success': False, 'error': 'Failed to send verification email. Please try again.'}), 500
+
+        # Create unverified user
+        user = User(username=username, email=email, password=password, verified=False)
         db.session.add(user)
         db.session.commit()
-        login_user(user)
-        return jsonify({'success': True})
+
+        app.logger.info(f'New user registered: {username} ({email}) - awaiting verification')
+        return jsonify({'success': True, 'message': 'Verification code sent to your email'})
+
     return render_template('register.html')
+
+@app.route('/verify', methods=['POST'])
+def verify():
+    """Verify email with code"""
+    data = request.json
+    email = data.get('email', '').strip().lower()
+    code = data.get('code', '').strip()
+
+    # Find user by email
+    user = User.query.filter_by(email=email).first()
+    if not user:
+        return jsonify({'success': False, 'error': 'User not found'}), 404
+
+    # Check if already verified
+    if user.verified:
+        return jsonify({'success': False, 'error': 'Email already verified'}), 400
+
+    # Verify code with Airtable
+    if verify_code_from_airtable(email, code):
+        user.verified = True
+        db.session.commit()
+        login_user(user)
+        app.logger.info(f'User verified and logged in: {user.username} ({email})')
+        return jsonify({'success': True, 'message': 'Email verified successfully'})
+    else:
+        return jsonify({'success': False, 'error': 'Invalid verification code'}), 400
 
 @app.route('/logout')
 @login_required
@@ -1987,6 +2085,20 @@ def api_get_job(user_id, job_id):
 
 if __name__ == '__main__':
     with app.app_context():
+        # Migration: Add email and verified columns to user table
+        try:
+            from sqlalchemy import text
+            db.session.execute(text('''
+                ALTER TABLE "user"
+                ADD COLUMN IF NOT EXISTS email VARCHAR(120) UNIQUE,
+                ADD COLUMN IF NOT EXISTS verified BOOLEAN DEFAULT FALSE
+            '''))
+            db.session.commit()
+            app.logger.info('User table migration: email and verified columns added')
+        except Exception as e:
+            db.session.rollback()
+            app.logger.info(f'User table migration already applied or failed: {e}')
+
         # Migration: Increase api_key.key column size
         try:
             from sqlalchemy import text
