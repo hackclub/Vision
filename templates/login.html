@@ -1,0 +1,98 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100">
+    <div class="max-w-md w-full space-y-8 bg-white p-10 rounded-xl shadow-lg">
+        <div>
+            <div class="flex justify-center">
+                <i class="fas fa-eye text-5xl text-blue-500"></i>
+            </div>
+            <h2 class="mt-6 text-center text-3xl font-bold text-gray-900">
+                Hack Club Vision
+            </h2>
+            <p class="mt-2 text-center text-sm text-gray-600">
+                Sign in to your account
+            </p>
+        </div>
+        <form class="mt-8 space-y-6" id="loginForm">
+            <div class="rounded-md shadow-sm space-y-4">
+                <div>
+                    <label for="username" class="block text-sm font-medium text-gray-700 mb-1">
+                        <i class="fas fa-user mr-1"></i> Username
+                    </label>
+                    <input id="username" name="username" type="text" required
+                           class="appearance-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                </div>
+                <div>
+                    <label for="password" class="block text-sm font-medium text-gray-700 mb-1">
+                        <i class="fas fa-lock mr-1"></i> Password
+                    </label>
+                    <input id="password" name="password" type="password" required
+                           class="appearance-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                </div>
+            </div>
+
+            <div id="error" class="hidden text-red-500 text-sm text-center"></div>
+
+            <div>
+                <button type="submit"
+                        class="group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-lg text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
+                    <i class="fas fa-sign-in-alt mr-2"></i>
+                    Sign in
+                </button>
+            </div>
+        </form>
+        <div class="text-center">
+            <a href="{{ url_for('register') }}" class="text-sm text-blue-600 hover:text-blue-500">
+                Don't have an account? Register
+            </a>
+        </div>
+    </div>
+</div>
+
+<script>
+document.getElementById('loginForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const username = document.getElementById('username').value;
+    const password = document.getElementById('password').value;
+    const submitBtn = e.target.querySelector('button[type="submit"]');
+    const originalBtnText = submitBtn.innerHTML;
+
+    // Show loading state
+    submitBtn.disabled = true;
+    submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i> Signing in...';
+
+    try {
+        const response = await fetch('/login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username, password })
+        });
+
+        const data = await response.json();
+        if (data.success) {
+            submitBtn.innerHTML = '<i class="fas fa-check mr-2"></i> Success!';
+            submitBtn.classList.remove('bg-blue-600', 'hover:bg-blue-700');
+            submitBtn.classList.add('bg-green-600');
+            setTimeout(() => {
+                window.location.href = '/dashboard';
+            }, 500);
+        } else {
+            submitBtn.disabled = false;
+            submitBtn.innerHTML = originalBtnText;
+            document.getElementById('error').textContent = data.error;
+            document.getElementById('error').classList.remove('hidden');
+            document.getElementById('error').classList.add('animate-pulse');
+            setTimeout(() => {
+                document.getElementById('error').classList.remove('animate-pulse');
+            }, 1000);
+        }
+    } catch (error) {
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = originalBtnText;
+        document.getElementById('error').textContent = 'Connection error';
+        document.getElementById('error').classList.remove('hidden');
+    }
+});
+</script>
+{% endblock %}
