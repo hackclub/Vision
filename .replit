@@ -1,5 +1,5 @@
 entrypoint = "app.py"
-modules = ["web", "python-3.11", "bash"]
+modules = ["bash", "nodejs-20", "python-3.11", "web"]
 
 [nix]
 channel = "stable-25_05"
