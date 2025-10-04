@@ -1,4 +1,4 @@
-entrypoint = "main.py"
+entrypoint = "app.py"
 modules = ["web", "python-3.11", "bash"]
 
 [nix]
@@ -11,7 +11,7 @@ language = "python3"
 requiredFiles = [".replit", "replit.nix"]
 
 [deployment]
-run = ["python3", "main.py"]
+run = ["python3", "app.py"]
 deploymentTarget = "cloudrun"
 
 [agent]
@@ -39,7 +39,7 @@ author = "agent"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "cd hack-club-vision && python app.py"
+args = "python app.py"
 waitForPort = 5000
 
 [workflows.workflow.metadata]
